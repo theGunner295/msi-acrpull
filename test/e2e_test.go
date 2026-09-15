@@ -140,9 +140,6 @@ type binding interface {
 // bindingMinter is a constructor for a non-nil pointer to a binding, since we can't create that with `B`
 type bindingMinter[B binding] func(namespace, name, scope, serviceAccount string, cfg *Config) B
 
-// bindingGetter fetches a binding using the client, which we can't do since we need a non-nil pointer to the binding for the controller-runtime client
-type bindingGetter[B binding] func(client crclient.Client, namespace, name string) func(ctx context.Context) (B, error)
-
 func testACRPullBinding[B binding](
 	t *testing.T, prefix string,
 	createBinding bindingMinter[B],
