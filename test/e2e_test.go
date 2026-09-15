@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	azworkloadidentity "github.com/Azure/azure-workload-identity/pkg/webhook"
@@ -257,28 +258,30 @@ func testACRPullBinding[B binding](
 		}
 		eventuallyFulfillPullBinding[B](t, ctx, client, namespace, pullBinding, newBinding)
 
-		thisBinding := newBinding(namespace, pullBinding)
-		if err := client.Get(ctx, crclient.ObjectKeyFromObject(thisBinding), thisBinding); err != nil {
-			t.Fatalf("failed to get pull binding %s/%s: %v", namespace, pullBinding, err)
-		}
-		updatedBinding := createBinding(namespace, pullBinding, "invalid!>?$q34m2,", serviceAccount, cfg)
-		updatedBinding.SetResourceVersion(thisBinding.GetResourceVersion())
-
 		t.Logf("updating pull binding %s/%s to refer to invalid scope", namespace, pullBinding)
-		if err := client.Update(ctx, updatedBinding); err != nil {
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			thisBinding := newBinding(namespace, pullBinding)
+			if err := client.Get(ctx, crclient.ObjectKeyFromObject(thisBinding), thisBinding); err != nil {
+				return err
+			}
+			updatedBinding := createBinding(namespace, pullBinding, "invalid!>?$q34m2,", serviceAccount, cfg)
+			updatedBinding.SetResourceVersion(thisBinding.GetResourceVersion())
+			return client.Update(ctx, updatedBinding)
+		}); err != nil {
 			t.Fatalf("failed to update pull binding %s/%s: %v", namespace, pullBinding, err)
 		}
 		eventuallyFailToFulfillPullBindingKeepingTimes[B](t, ctx, client, namespace, pullBinding, newBinding)
 
-		thisBinding = newBinding(namespace, pullBinding)
-		if err := client.Get(ctx, crclient.ObjectKeyFromObject(thisBinding), thisBinding); err != nil {
-			t.Fatalf("failed to get pull binding %s/%s: %v", namespace, pullBinding, err)
-		}
-		updatedBinding = createBinding(namespace, pullBinding, "repository:alice:pull", serviceAccount, cfg)
-		updatedBinding.SetResourceVersion(thisBinding.GetResourceVersion())
-
-		t.Logf("updating pull binding %s/%s to refer to correct service account", namespace, pullBinding)
-		if err := client.Update(ctx, updatedBinding); err != nil {
+		t.Logf("updating pull binding %s/%s to refer to valid scope", namespace, pullBinding)
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			thisBinding := newBinding(namespace, pullBinding)
+			if err := client.Get(ctx, crclient.ObjectKeyFromObject(thisBinding), thisBinding); err != nil {
+				return err
+			}
+			updatedBinding := createBinding(namespace, pullBinding, "repository:alice:pull", serviceAccount, cfg)
+			updatedBinding.SetResourceVersion(thisBinding.GetResourceVersion())
+			return client.Update(ctx, updatedBinding)
+		}); err != nil {
 			t.Fatalf("failed to update pull binding %s/%s: %v", namespace, pullBinding, err)
 		}
 		eventuallyFulfillPullBinding[B](t, ctx, client, namespace, pullBinding, newBinding)
