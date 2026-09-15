@@ -95,7 +95,3 @@ type AcrPullBindingList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []AcrPullBinding `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&AcrPullBinding{}, &AcrPullBindingList{})
-}
