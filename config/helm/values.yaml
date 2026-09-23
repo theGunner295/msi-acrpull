@@ -1,5 +1,5 @@
 namespace: acrpull
-image: registry/image:tag
+image: ghcr.io/ghcr.io/thegunner295/msi-acrpull
 replicas: 2
 nodeSelector: {}
 tolerations: []
