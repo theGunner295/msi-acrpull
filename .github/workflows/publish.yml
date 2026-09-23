@@ -2,60 +2,44 @@ name: Publish
 
 on:
   push:
-    tags:
-    - "v*"
-  workflow_dispatch:
-    inputs:
-      releaseTag:
-        description: "Release tag to publish"
-        type: string
-        required: true
+    branches: main
+
+env:
+  REGISTRY: ghcr.io
 
 jobs:
-  setup:
+  build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      
     steps:
     - name: Check out code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Get image metadata
-      id: get_metadata
-      run: |
-        if [ "${{ github.event_name }}" == "push" ]; then
-          IMG_TAG="${{ github.ref_name }}"
-        else
-          IMG_TAG=${{ github.event.inputs.releaseTag }}
-        fi
-        IMG="public/aks/msi-acrpull:${IMG_TAG}"
-        echo "IMG_TAG=${IMG_TAG}" >> ${GITHUB_OUTPUT}
-        echo "IMG=${IMG}" >> ${GITHUB_OUTPUT}
-    outputs:
-      IMG_TAG: ${{ steps.get_metadata.outputs.IMG_TAG }}
-      IMG: ${{ steps.get_metadata.outputs.IMG }}
+    - name: Set lower-case image name
+      id: image
+      run: echo "name=${REPO,,}" >> "$GITHUB_OUTPUT"
+      env:
+        REPO: ${{ github.repository }}
 
-  publish:
-    runs-on:
-      labels: ["self-hosted", "1ES.Pool=${{ vars.RUNNER_BASE_NAME}}-ubuntu"]
-    needs: setup
-    env:
-      IMG: ${{ secrets.AZURE_CONTAINER_REGISTRY }}/${{ needs.setup.outputs.IMG }}
-    steps:
-    - name: Check out code
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-    - name: Build the Docker image
+    - name: Log in to the Container registry
+      uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+      with:
+        images: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
+        tags: |
+          type=semver,pattern={{version}}
+          type=raw,value=${{ github.ref_name }}-build.${{ github.run_number }}
+    - name: Build the Docker Image
       run: make docker-build
 
-    - name: Run vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ${{ env.IMG }}
-        format: table
-
-    - name: Azure Container Registry Login
-      run: |
-        az login --identity -o none
-        az acr login -n ${{ secrets.AZURE_CONTAINER_REGISTRY }}
-
-    - name: Push to CI ACR
+    - name: Push to ghcr.io
       run: make docker-push
