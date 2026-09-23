@@ -38,6 +38,10 @@ jobs:
         tags: |
           type=semver,pattern={{version}}
           type=raw,value=${{ github.ref_name }}-build.${{ github.run_number }}
+    - name: Set image variables
+      run: |
+        echo "IMG=${{ env.REGISTRY }}/${{ steps.image.outputs.name }}" >> $GITHUB_ENV
+        echo "IMG_TAG=${{ steps.meta.outputs.version }}" >> $GITHUB_ENV
     - name: Build the Docker Image
       run: make docker-build
 
